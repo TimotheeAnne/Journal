@@ -1,0 +1,375 @@
+#+STARTUP: indent
+* to remenber
+** ROS
+*** compilation 
+in the catjin workspace:
+catkin build anymal_bedi_sim
+
+* 2020
+** January
+*** 17 
+**** the joy of Ross
+***** issue with the free_fait joint traectory   
+I have converted one succesfull trajectory into a yaml file, 
+I also change the initialization of the robot in ROS to the same as in pybullet
+At the init there is an error with bad state, after la,ch is work for 1s then another error and at the end the robot did nit get up.
+it gives the error:
+[ WARN] [1579261011.538334604, 196.069750000]: ||angularVelocityBaseInBaseFrame_|| is larger than 4.000000!
+[ERROR] [1579261011.538596864, 196.069750000]: [Rocoma][free_gait_impedance_ros] Bad state!
+[ERROR] [1579261011.538850896, 196.069750000]: [Rocoma] Emergency Stop!
+[ INFO] [1579261011.539319725, 196.069750000]: [Rocoma][freeze] Fast initialized successfully!
+[ WARN] [1579261011.539493108, 196.069750000]: ||angularVelocityBaseInBaseFrame_|| is larger than 4.000000!
+[ERROR] [1579261011.539680149, 196.069750000]: [Rocoma][freeze] Bad state!
+[ INFO] [1579261011.539895825, 196.069750000]: [Rocoma] Switched to failproof controller!
+[ INFO] [1579261011.540211346, 196.069750000]: Pre-stopping anymal_ctrl_free_gait_ros.
+[ INFO] [1579261011.540533738, 196.069750000]: StepAction aborted.
+[ INFO] [1579261011.540875732, 196.069750000]: [Rocoma][free_gait_impedance_ros] Cancel worker free_gait_impedance_ros_publisher!
+[ INFO] [1579261011.541508652, 196.069750000]: rqt_highlevel_controlmanager no modes are available.
+[INFO] [1579261011.541939, 196.069750]: Action switched to state: Error.
+[ INFO] [1579261011.568613468, 196.071000000]: Worker [free_gait_impedance_ros_publisher] terminated.
+
+
+the error came from the angularVelocityBase limit at 4. in RocoState.cpp  by putting 5. it works.
+*** 20
+**** plan to do 
+The main issue of my last internship was the difficulty t learn a useful model
+***** try again with different kind of models:
+****** DNN, PNN, PENN, GP, linear model, classic model of the control
+***** try with the robot but for an easy dynaùics for different time scales
+*** 22
+**** random action in the motor joint space from [0.5, 2.5] rad
+on 23,001 random actions of 500 steps at 50Hz e.g. 10sec
+67% do not fall
+max distance 1.6m
+47 = 0.2% go more than 1m
+**** States
+***** action space
+****** in gym
+ag in [-1,1] such as qref = q0 + a * pi/4
+****** in the model
+am = (4/pi*(q-q0))-ag 
+***** state space
+****** q 
+0-7
+****** q velocity
+8-15
+****** roll pitch yaw 
+16-17-18
+****** roll pitch yaw rate 
+19-20-21
+****** z
+z 22
+****** base velocity
+x 23- y 24- z 25
+*** 23
+**** random action in the motor joint space from a in [-1,-1] aka 1.5 +/- pi/4 
+on 22,001 random actions of 500 steps at 50Hz e.g. 10sec
+94% do not fall
+max distance 1.2m
+5 = 0.02% go went more than 1m 
+**** change the action space
+to reduce the computation I change the action space to be (qref-q)/pi
+such that it is centred and roughly between -1 and 1 
+*** 24
+**** it works !
+[[/home/timothee/Documents/Journal/Video and figures/January/x_z_run_190.mp4][video]]
+***** observation 
+    observation.extend(self.minitaur.GetMotorAngles().tolist())
+    observation.extend(self.minitaur.GetMotorVelocities().tolist())
+    observation.extend(self.minitaur.GetBaseRollPitchYaw().tolist())
+    observation.extend(self.minitaur.GetBaseRollPitchYawRate().tolist())
+    observation.extend([self.minitaur.GetBasePosition()[2]])
+    observation.extend(self.minitaur.GetBaseVelocity().tolist())
+***** action
+qdesired-q = (np.ones(8) * 1.5 + a * np.pi / 4 - current_state[:8]) / np.pi where a in [-1,1]^8
+**** to try
+***** a = q desired
+***** remove z
+***** add orientation in the cost function
+***** use gaussian i nthe cost function instead of quadratic
+***** add velocity and torque limit
+***** add smoothness in the cost function 
+***** use desired velocity instead of -Vx
+*** 27
+**** without z 
+it works with x r p y and Vz cost function
+**** with slow velocity
+it works
+**** directly with Qdesired
+works
+*** 28
+**** try to be smoother
+[[/home/timothee/Documents/Journal/Video and figures/January/x_z_run_190.mp4][video]]
+H 13, speed 1, x r p y all 1, Vmax 0.3 Amax 0.5
+*** 29
+**** state space
+****** q 
+0-7
+****** q velocity
+8-15
+****** roll pitch yaw 
+16-17-18
+****** roll pitch yaw rate 
+19-20-21
+****** base velocity
+x 22- y 23
+****** z
+z 24
+**** Vz
+without a reward regarding Z the robot fall on its belly 
+[[/home/timothee/Documents/Journal/Video and figures/January/29/Vz_comparison.png][graph x reward]]
+with the smooth actions
+[[/home/timothee/Documents/Journal/Video and figures/January/29/smoother.mp4][with Vz]] 
+without the smooth actions 
+[[/home/timothee/Documents/Journal/Video and figures/January/29/basic.mp4][with Vz]]
+we can still do better, more smooth
+**** why does it work
+it seems that the most important information if the velocity of the base
+[[/home/timothee/Documents/Journal/Video and figures/January/29/X_velocity.png][curve]]
+it works without the base angular velocity
+*** 30
+**** for the hard smoothing 
+its better to start with only one random because the the samplingdunamics is farther from the purely random one
+**** stabilization
+[[/home/timothee/Documents/Journal/Video and figures/January/29/stable_with_hard.mp4][video]] with only the z r p rewards 
+without [[/home/timothee/Documents/Journal/Video and figures/January/29/stable_basic.mp4][video]] 
+adding the hard smoothing improve greatly the quality of the movement
+**** forward
+[[/home/timothee/Documents/Journal/Video and figures/January/29/forward_basic.mp4][basic]]
+*** 31
+**** walking forward 
+with a in [-1,1] and hard smoothing condition it does not succed to walk wthout falling or just stay there but not falling, it lean forward then fall
+by reducing to [-0.5,0.5] it succeed to walk forward 
+[[/home/timothee/Documents/Journal/Video and figures/January/29/forward_hard.mp4][video]] xzrpy = 1 with H=5 and desired_speed = 1
+[[/home/timothee/Documents/Journal/Video and figures/January/29/slow_forward_hard.mp4][video]] with xzrpy = 1 with H=13 and desired_speed = 0.25
+** February  
+*** Week 3-7
+**** TODO [100%]
+***** DONE pass the hard sampling on GPU
+2 times 
+***** DONE see why the distance showed is not the one plot
+in the print distance there was a wrong indexation of the sample (which is always of shape (1, episode length, obs dim)
+***** DONE make it walks up to 1m/s with hard smoothing
+only succeeded to reach 0.4m/s while reducing the smoothing
+***** DONE see the effect of qref and delta qref as actions
+[[/home/timothee/Documents/Journal/Video and figures/february/7_02/joint_VS_delta_joint.png][distance]] median + each 20 runs 
+***** DONE add soft smoothing
+***** DONE see if changing the control frequency improve something
+for 25Hz its seems messy, need more fine tuning of action space or pid gain
+***** DONE Add jerk smoothing
+***** DONE see Horizon X best speed/reward
+***** DONE see Max speed x Vel Acc Jerk limit
+***** DONE test with different frictions
+it works for mismatches -0.5, 0, 0.5 eg friction 0.5, 1, 2
+***** DONE test meta-learning
+it works for different frictions 
+**** 3
+***** increase the qref limit
+increasing the limit to [-0.8,0.8] and reducing the xreward weight to 0.005 allow the robot to walk forward but always at speed 0.2m/s 
+***** increase the episode length
+it converges in less than 50 random + 50 MPC (giving >50 MPC does not five anything)
+***** increase the maximal action velocity and acceleration
+increasing those values increases the maximal velocity of the robot
+***** increase the horizon
+from 10 to 20 reduce a bit the maximal speed of the robot
+***** decreease the control frequency
+it's worse (require different fine-tuning)
+**** 4
+***** using swing & extention action parameters
+it does not change much the same celocity is reach when hard smoothing 
+***** collect data on the trotting gait example of simToReal 
+/home/timothee/Documents/LARSEN/notebook/data/trotting_SimToReal.npy
+max between 0.55-0.65
+****** to launch
+conda activate Sim_to_real
+cd ~/Documents/Software/bullet3-master/examples/pybullet/gym/pybullet_envs/minitaur/envs
+python python minitaur_trotting_env_example.py
+***** small proof of Vqref anfd Aqref
+V has to be smaller than A so that the bou,ded actin space does not create issue with amax=amin
+***** be careful with the vdesired
+if i put vdesired = 0.4 then it find a speed <3
+but if i put vdesired = 1 then is find a speed >4
+**** 6
+***** joint VS joint space
+[[/home/timothee/Documents/Journal/Video and figures/february/7_02/joint_VS_delta_joint.png][distance]] median + each 20 runs 
+***** TODO adding jerk limit
+it does not help much due to the bounded area
+*** Week 10-14
+**** TODO [37%]
+***** DONE performance VS Horizon
+[[/home/timothee/Documents/Journal/Video and figures/february/14_02/Horizons.png][fig]] 
+comparison with the new weighted system for thr hard smoothing 
+increasing the horizon seems to improve the performance
+***** DONE test torque control at 250 Hz
+the only thing I found was a succesfu local minima with very high oscilation
+[[/home/timothee/Documents/Journal/Video and figures/february/14_02/torque.mp4][video]] 
+***** TODO use torque at 50Hz with interpolation 
+***** TODO test with more data: q, delta_q et torque (comparer the motions)
+***** TODO test meta training
+****** TODO for the comparison the default should be f=0.8 and the test f=0.2/0.1
+****** TODO test with different masses 
+***** TODO fine tuned smoothing 
+****** TODO add more soft
+****** TODO fine tuned the weights of the hard
+***** DONE Plot the action (of one motor) with different condition of smoothing
+****** DONE plot the qd and torque = Kp (qd -q)
+***** TODO try to compute with pareto front or ranking system
+***** TODO add energy reward (sum of torque norme for each joint)
+***** TODO make a summary review of the machine learning parper using real robot data
+**** 10
+***** implementation of the torque control nut need of fine tuneing the parameters
+***** correction of the smoohing weights using the timestep to be homgeneous
+the action are very smooth but they jump between the two bounds
+**** 11
+***** Horizon
+increasing the horzion seems to improbve the performance with the new smoothing 
+***** new hard smoothing
+the action are smooth but 
+***** Use Torque control
+applied_torque = desired_torque + damping_torque + virtual_torque
+the virtual torque being 0 if the joints are in the safe region and being a string +dumping system if outside of the safe region 
+**** 12
+***** Torque control
+****** Horizon
+[[/home/timothee/Documents/Journal/Video and figures/february/14_02/torque_basic_horizon.png][fig]] H=25 seems better, after the performance decreases
+it was without hard constraint and with high torque limit
+****** with some hard smoothing
+[[/home/timothee/Documents/LARSEN/fast_adaptation_embedding/exp/results/torque_minitaur_02/12_02_2020_10_49_04_experiment/run_0/videos/env_0_run_25.mp4][video]] 
+with better limit the robot does not fall but we can see that it is blocked in a local minima where it lean forward
+even with only the x and z reward it gets stucks in leaning forward:
+- the horizon may be too small: 25=0.1s
+- the max_torque_jerk may be too small
+***** Minitaur
+with torque_control_enabled = False the simulation start with 100 steps where the apply joint is pi/2
+**** 13
+***** add low pass filter in the joint velocities at 10Hz
+***** Torque control
+****** Kd
+look how the leg oscilate and tune Kd to have a normal nehabiour with as less oscilations as possible
+*** Week 17-21
+**** TODO [66%] 
+***** DONE add nutterworth filter for q velocities
+***** DONE plot q, torque, torque computed 
+[[/home/timothee/Documents/Journal/Video and figures/february/21_02/Torque_from_joint_control_zoom.png][fig]]
+***** TODO make the torque contorl work [66%]
+****** DONE change torque bounds using swing and extension
+****** DONE find maximal torque for the minitaur motors (look in Eloise code)
+max velocity = 2pi
+max torque = 3.5 
+she did not use the accurate model nor the pd control so the max velocity is not used 
+****** TODO study the sampling 
+***** TODO compare torque and joint control
+**** 17
+***** comarison popsize and shape
+****** shape
+[[/home/timothee/Documents/Journal/Video and figures/february/21_02/arcitecture_BsF.png][BsF]] 
+it seems that [256,256] and [1024, 256, 128] have the same behaviors 
+****** popsize 
+[[/home/timothee/Documents/Journal/Video and figures/february/21_02/shape_2.png][256x256]] 
+there is no differences between 1000; 10,000 and 100,000 popsize 
+***** plot torque 
+the measured torque is +0.004, +0.008, +0.012; +0.016; +0.02 from the current desired computed torque
+**** 18
+***** torque control 
+****** try to sample in the S&E space
+does not work at 50Hz because the p controler overshoot making the dynamic instable
+****** interpolation
+there was an error in the interpolation, x = past + alpha * (past-x) instead of x = past + alpha * (past-x_desired)
+**** 19
+***** random S&E hard smoothing
+with 15,001 samples of 500 steps = 10s
+13496 = 90% not fallen 
+23 = 0.15% more than 0.5m forward 
+max = 0.73m
+***** torque 2, sampling from S&E space
+****** no hard smoothing 
+kp 3 kd 0.1 
+[[/home/timothee/Documents/LARSEN/fast_adaptation_embedding/exp/results/torque_minitaur_02/19_02_2020_11_43_10_experiment/run_0/videos/env_0_run_74.mp4][video]] move forward at 0.1m/s 
+kp 8 kd 0.3
+[[/home/timothee/Documents/LARSEN/fast_adaptation_embedding/exp/results/torque_minitaur_02/19_02_2020_12_17_07_experiment/run_0/videos/env_0_run_74.mp4][video]] 0.3 m/s similar to joint control 
+**** 20
+***** compare control
+joint control in leg space
+torque control with sampling in leg space
+torque control with sampling in torque space
++
+p controler at 50Hz
++
+virtual force at 250Hz
+[[/home/timothee/Documents/Journal/Video and figures/february/21_02/control_bsf.png][fig]] 
+****** comment
+for the direct force control the max delta torque (8) was 1.2 whereas for the other it was more 3.5-4
+puting 20 will make it 4 but with a different distribution 
+*** Week 24-29
+**** TODO [50%]
+***** DONE review/focus paper title and anstract
+***** TODO test spotmicro
+***** TODO test ANYmal
+***** DONE analyse the data collected
+****** DONE velocity control
+need to put v for velocity, more time for motor, s&E is by far the best one, why ?
+- velocity2 require the prediciton of the model
+****** DONE soft smothing param
+[[/home/timothee/Documents/Journal/Video and figures/february/29_02/soft_smoothing_weights.png][fig]]
+***** TODO reward function
+****** TODO test with fall reward * others
+****** DONE test exp(-(x-target)²)
+seems better (without smoothing)
+***** DONE do again the popsize comparizon but starting from 1 to 10,000
+**** 26
+***** test q control and velocity control
+[[/home/timothee/Documents/Journal/Video and figures/february/29_02/controls_long.png][fig longer]] 
+[[/home/timothee/Documents/Journal/Video and figures/february/29_02/controls.png][fig shorter]]
+S&E is the great winner , but why ?
+No need to go further than 24r + 75mpc
+***** *warning* Error in X2 control in the MPC
+****** the convertion was wrong 
+actions[:, 4] = actions[:, 4]*0.6 instead of actions[:, :4] = actions[:, :4]*0.6 
+****** the x variable used t recorder the samples was modified
+I changed 
+actions = action_batch[:, h * self.__action_dim: h * self.__action_dim + self.__action_dim]
+to
+actions = action_batch[:, h * self.__action_dim: h * self.__action_dim + self.__action_dim].clone()
+**** 27
+after those corrections all methods seems to work
+[[/home/timothee/Documents/Journal/Video and figures/february/29_02/correct_controls.png][fig]] with se being the best one
+** March
+*** Week 02-06
+**** TODO [80%]
+***** DONE analyse popsize
+***** DONE analyse speed
+***** DONE implement save and load model
+***** DONE implement test pre-trained model
+***** TODO test on the ANYmal
+**** 02
+***** popsize
+intersingly a small population (5) is enough to learn how to move forward
+[[/home/timothee/Documents/Journal/Video and figures/March/06/popsize_bsf.png][fig]] 
+[[/home/timothee/Documents/LARSEN/fast_adaptation_embedding/exp/results/torque_minitaur_02/28_02_2020_15_43_07_popsize_speed_horizon_discount/run_8/videos/env_0_run_74.mp4][popsize=5]] 
+the closed-loop may explain why as it recompute a solution every 20ms
+***** desired speed
+[[/home/timothee/Documents/Journal/Video and figures/March/06/desired_speed.png][fig]]
+the maximal speed should be around 0.5m/s 
+***** test with pre trained model
+the model seems to not take into acount the absolute orientation 
+**** 03
+***** test with pretrained model
+**** 05
+***** spotmicro
+****** action space
+Alex said that it is better to use the direct joints angles because for an animal you have to decouple the knee from the leg
+****** mass
+3.2 + 4*0.4 = 4.8kg
+****** bounds
+given an existing controller, the bound of the space is mostly: 
+ub = np.array([0.02, -0.45, 1.65] * 4)  
+lb = np.array([-0.09, -1.2, 1.2] * 4) 
+***** small mis understanding in the code
+in the fast adaptation the max action jerk was set to 1000 instead of 10,000 which lead the action to be periodic, bouncing between the two limits
+*** Week 09-13
+**** TODO [%]
+***** TODO MPC for spotmicro
+***** TODO meta-learning 
+****** TODO can it learn on slippey floor
+****** TODO can it quickly adapt from default to slippery
+
