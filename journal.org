@@ -403,4 +403,6 @@ when replaying a pretrained model without the 'test' the robot have the same per
 ***** the PD gains seems suspicious
 kp = 0.045
 kd = 0.4
-
+**** 12
+***** corrected PID 
+I implement the PID using torque control instead of the direct position control function of pybullet 
